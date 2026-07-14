@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EcoRoute - Planificador de Rutas Inteligente</title>
+  
+  <!-- PWA Manifest & Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="EcoRoute">
+  <link rel="apple-touch-icon" href="icon.svg">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+  <!-- Map Container -->
+  <div id="map"></div>
+  
+  <!-- App Interface Elements -->
+    <!-- Brand Logo Header -->
+    <div class="brand-header">
+      <div style="display:flex; align-items:center;">
+        <img src="buchanan-logo.png" alt="Colin Buchanan" class="brand-logo-img" style="height: 28px; width: auto; display: block;">
+        <span class="app-title-text" data-i18n="app_title" style="font-size: 11px; font-weight: 700; color: var(--primary); margin-left: 10px; border-left: 1.5px solid var(--border-light); padding-left: 10px; max-width: 180px; line-height: 1.2;">Eco-Route: refugios climáticos y movilidad térmicamente confortable</span>
+      </div>
+    </div>
+
+    <!-- Main App Mode Toggle -->
+    <div class="app-mode-toggle">
+      <button class="mode-toggle-btn active" data-app-mode="mobility">
+        <i data-lucide="route"></i> <span data-i18n="tab_mobility">Movilidad</span>
+      </button>
+      <button class="mode-toggle-btn" data-app-mode="copernicus">
+        <i data-lucide="map-pin"></i> <span data-i18n="tab_places">Lugares</span>
+      </button>
+    </div>
+
+    <!-- Live Thermometer Map Control -->
+    <button id="btn-live-thermo-map" class="map-style-toggle" style="top: calc(var(--safe-top) + 64px);" title="Termómetro en Directo">
+      <i data-lucide="thermometer"></i>
+    </button>
+
+    <!-- Map Style Switcher -->
+    <button id="btn-map-style" class="map-style-toggle" style="top: calc(var(--safe-top) + 116px);" title="Cambiar a Calles">
+      <i data-lucide="map"></i>
+    </button>
+
+    <!-- Language Dropdown -->
+    <div id="lang-dropdown-container" class="map-style-toggle" style="top: calc(var(--safe-top) + 168px); overflow: visible;" title="Idioma / Language">
+      <i data-lucide="globe"></i>
+      <div class="lang-dropdown-content hidden-dropdown">
+        <button class="lang-btn active" data-lang="es">ES</button>
+        <button class="lang-btn" data-lang="ca">CA</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+      </div>
+    </div>
+
+    <!-- Help Button -->
+    <button id="btn-help" class="map-style-toggle" style="top: calc(var(--safe-top) + 220px); color: var(--primary);" title="Información">
+      <i data-lucide="help-circle"></i>
+    </button>
+
+    <!-- Floating Search & Routing Panel (Mobility Mode) -->
+    <header id="mobility-search-panel" class="floating-panel search-panel">
+      <div class="search-inputs">
+        <div class="input-group">
+          <div class="input-icon marker-start">
+            <i data-lucide="circle-dot" class="icon-start"></i>
+          </div>
+          <input type="text" id="input-start" placeholder="Elige un punto de partida..." autocomplete="off">
+          <button id="btn-current-location" title="Usar ubicación actual">
+            <i data-lucide="locate"></i>
+          </button>
+          <div id="autocomplete-start" class="autocomplete-dropdown hidden"></div>
+        </div>
+        
+        <div class="input-divider">
+          <button id="btn-swap-locations" class="swap-button" title="Invertir origen y destino">
+            <i data-lucide="arrow-up-down"></i>
+          </button>
+        </div>
+        
+        <div class="input-group">
+          <div class="input-icon marker-end">
+            <i data-lucide="map-pin" class="icon-end"></i>
+          </div>
+          <input type="text" id="input-end" placeholder="Elige un destino..." autocomplete="off">
+          <button id="btn-clear" class="btn-clear hidden" title="Limpiar ruta">
+            <i data-lucide="x"></i>
+          </button>
+          <div id="autocomplete-end" class="autocomplete-dropdown hidden"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Floating Search & Routing Panel (Copernicus Mode) -->
+    <header id="copernicus-search-panel" class="floating-panel search-panel hidden">
+      <div class="welcome-header">
+        <div class="welcome-logo">
+          <i id="copernicus-header-icon" data-lucide="map-pin" class="text-emerald-600" style="width:48px;height:48px;color:#009639;"></i>
+          <div>
+            <h2>Lugares y Clima</h2>
+            <p id="copernicus-header-subtitle">Temperatura Superficial LST</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Add Climate Refuge Action -->
+      <div class="refuge-action-box" style="margin-top: 16px; padding: 12px; border: 1px dashed var(--primary); border-radius: 12px; background: rgba(0, 150, 57, 0.03);">
+        <button id="btn-add-refuge" class="btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; padding: 10px;">
+          <i data-lucide="plus-circle"></i> Registrar Refugio Climático
+        </button>
+        <p class="small-text text-muted" style="margin-top: 8px; text-align: center; font-size: 11px;">Presiona el botón y haz clic en el mapa para registrar un refugio con aire acondicionado, vegetación o agua.</p>
+      </div>
+
+      <!-- Copernicus Sub-Layer Toggle (LST vs NDVI vs NDBI vs NDWI) -->
+      <div class="transit-options-selector" style="margin-top:16px;">
+        <span class="transit-sub-title">Indicador Copernicus:</span>
+        <div class="transit-pills" style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button class="transit-pill" data-copernicus-layer="none" id="btn-cop-none">
+            <i data-lucide="eye-off"></i> <span>Ninguno</span>
+          </button>
+          <button class="transit-pill active" data-copernicus-layer="temperature" id="btn-cop-temp">
+            <i data-lucide="thermometer"></i> <span>Calor (LST)</span>
+          </button>
+          <button class="transit-pill" data-copernicus-layer="vegetation" id="btn-cop-veg">
+            <i data-lucide="leaf"></i> <span>Vegetación (NDVI)</span>
+          </button>
+          <button class="transit-pill" data-copernicus-layer="builtup" id="btn-cop-built">
+            <i data-lucide="building"></i> <span>Construido (NDBI)</span>
+          </button>
+          <button class="transit-pill" data-copernicus-layer="water" id="btn-cop-water">
+            <i data-lucide="droplet"></i> <span>Agua (NDWI)</span>
+          </button>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5;">La Temperatura de Superficie Terrestre (LST) estima la energía calorífica irradiada por el suelo. Las zonas de asfalto denso retienen más calor, mientras que las cubiertas de agua y vegetación actúan como refrigerantes.</p>
+      </div>
+
+      <p class="intro-text" id="copernicus-intro-text" style="margin-top: 16px;">Observa el mapa térmico de España con datos inspirados en el programa espacial Copernicus. Identifica las islas de calor y zonas de alta radiación solar.</p>
+
+      <!-- LST Legend and Info -->
+      <div id="cop-temp-card" class="route-summary-card card" style="margin-top: 16px;">
+        <h3>Escala de Temperatura Superficial (LST)</h3>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:600;">
+          <span>20°C (Fresco)</span>
+          <span>30°C</span>
+          <span>40°C+ (Muy Cálido)</span>
+        </div>
+        <div style="height: 12px; background: linear-gradient(to right, #2563eb, #eab308, #ef4444, #991b1b); border-radius: 6px; margin-top: 4px;"></div>
+      </div>
+
+      <div id="cop-temp-info" class="mode-ratings-card card" style="margin-top: 16px;">
+        <div class="card-header">
+          <h3><i data-lucide="info"></i> Temperatura y Confort Térmico</h3>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5;">La Temperatura de Superficie Terrestre (LST) estima la energía calorífica irradiada por el suelo. Las zonas de asfalto denso retienen más calor, mientras que las cubiertas de agua y vegetación actúan como refrigerantes.</p>
+      </div>
+
+      <!-- Vegetation NDVI Legend and Info (Hidden by default) -->
+      <div id="cop-veg-card" class="route-summary-card card hidden" style="margin-top: 16px;">
+        <h3>Índice de Vegetación (NDVI)</h3>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:600;">
+          <span>Bajo (Suelo Seco/Urbano)</span>
+          <span>Medio</span>
+          <span>Alto (Parques/Bosque)</span>
+        </div>
+        <div style="height: 12px; background: linear-gradient(to right, #fef08a, #86efac, #15803d); border-radius: 6px; margin-top: 4px;"></div>
+      </div>
+
+      <div id="cop-veg-info" class="mode-ratings-card card hidden" style="margin-top: 16px;">
+        <div class="card-header">
+          <h3><i data-lucide="leaf"></i> Índice de Diferencia Normalizada de Vegetación</h3>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5;">El NDVI cuantifica la vegetación viva analizando la reflectancia en las bandas del Rojo e Infrarrojo Cercano (NIR). Las áreas con vegetación sana disipan calor mediante la evapotranspiración foliar.</p>
+      </div>
+
+      <!-- Built-Up NDBI Legend and Info (Hidden by default) -->
+      <div id="cop-built-card" class="route-summary-card card hidden" style="margin-top: 16px;">
+        <h3>Índice de Área Construida (NDBI)</h3>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:600;">
+          <span>Bajo (Natural/Agua)</span>
+          <span>Medio</span>
+          <span>Alto (Asfalto/Edificios)</span>
+        </div>
+        <div style="height: 12px; background: linear-gradient(to right, #ffffff, #fca5a5, #ef4444, #991b1b); border-radius: 6px; margin-top: 4px;"></div>
+      </div>
+
+      <div id="cop-built-info" class="mode-ratings-card card hidden" style="margin-top: 16px;">
+        <div class="card-header">
+          <h3><i data-lucide="building"></i> Índice de Área Urbanizada y Construida</h3>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5;">El NDBI resalta superficies artificiales e impermeabilizadas usando bandas de Infrarrojo de Onda Corta (SWIR). El hormigón y asfalto tienen alta inercia térmica, atrapando el calor diurno y provocando la UHI (Isla de Calor Urbana).</p>
+      </div>
+
+      <!-- Water NDWI Legend and Info (Hidden by default) -->
+      <div id="cop-water-card" class="route-summary-card card hidden" style="margin-top: 16px;">
+        <h3>Índice de Agua (NDWI)</h3>
+        <div style="display:flex; justify-content:space-between; margin-top:8px; font-weight:600;">
+          <span>Sin Agua Terrestre</span>
+          <span>Humedad Alta</span>
+          <span>Cuerpo de Agua Abierto</span>
+        </div>
+        <div style="height: 12px; background: linear-gradient(to right, #f3f4f6, #93c5fd, #2563eb); border-radius: 6px; margin-top: 4px;"></div>
+      </div>
+
+      <div id="cop-water-info" class="mode-ratings-card card hidden" style="margin-top: 16px;">
+        <div class="card-header">
+          <h3><i data-lucide="droplet"></i> Índice Diferencial de Agua Normalizado</h3>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5;">El NDWI identifica la presencia de agua líquida superficial analizando bandas del Verde e Infrarrojo Cercano (NIR). Los ríos, lagos y fuentes disipan calor actuando como sumideros térmicos locales de alta eficiencia.</p>
+      </div>
+
+      <!-- Methodology Card (Transparency) -->
+      <div class="mode-ratings-card card" style="margin-top: 16px; border-left: 4px solid var(--primary);">
+        <div class="card-header">
+          <h3><i data-lucide="help-circle"></i> Metodología y Transparencia</h3>
+        </div>
+        <p class="small-text" style="margin-top: 8px; line-height: 1.5; font-weight: 500;">
+          <strong>¿Cómo calculamos las Islas de Calor?</strong><br>
+          A nivel desagregado (Zoom alto), procesamos los polígonos geográficos reales del entorno (OSM) y aplicamos la fórmula teórica de balance térmico satelital:
+        </p>
+        <div style="background: rgba(0, 150, 57, 0.05); padding: 8px; border-radius: 8px; margin: 8px 0; font-family: monospace; font-size: 11px; text-align: center; color: var(--primary); font-weight: bold;">
+          LST = Base + (NDBI * 8°C) - (NDVI * 5°C) - (NDWI * 7°C)
+        </div>
+        <p class="small-text" style="line-height: 1.5;">
+          La vegetación (NDVI) y el agua (NDWI) restan calor de la línea base, reduciendo la temperatura en oasis urbanos, mientras que el cemento y asfalto (NDBI) suman calor de manera severa.
+        </p>
+      </div>
+
+    </header>
+
+    <!-- Sidebar / Bottom Sheet for Routing Details -->
+    <div id="bottom-sheet" class="bottom-sheet">
+      <!-- Drag Handle for Mobile -->
+      <div class="sheet-drag-handle">
+        <div class="drag-bar"></div>
+      </div>
+      
+      <div class="sheet-content">
+        <!-- Active Route State (Visible by default) -->
+        <div id="sheet-route-state" class="sheet-state">
+          <!-- Modes of Transport Tabs -->
+          <div class="mode-tabs">
+            <button class="mode-tab mode-tab-manual" data-mode="manual">
+              <i data-lucide="pencil"></i>
+              <span class="mode-name">Manual</span>
+              <span class="mode-time" id="tab-time-manual">--</span>
+              <div class="efficiency-badge" id="tab-score-manual">--</div>
+            </button>
+            <button class="mode-tab active" data-mode="foot">
+              <i data-lucide="footprints"></i>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span class="mode-name" data-i18n="btn_foot">A pie</span>
+                <span class="beta-badge" data-i18n="beta_badge" style="font-size:8px; background:var(--heat-warm); color:#fff; padding:2px 4px; border-radius:4px; font-weight:700;">BETA</span>
+              </div>
+              <span class="mode-time" id="tab-time-foot">--</span>
+              <div class="efficiency-badge" id="tab-score-foot">--</div>
+            </button>
+            <button class="mode-tab" data-mode="bike">
+              <i data-lucide="bike"></i>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span class="mode-name" data-i18n="btn_bike">Bicicleta</span>
+                <span class="beta-badge" data-i18n="beta_badge" style="font-size:8px; background:var(--heat-warm); color:#fff; padding:2px 4px; border-radius:4px; font-weight:700;">BETA</span>
+              </div>
+              <span class="mode-time" id="tab-time-bike">--</span>
+              <div class="efficiency-badge" id="tab-score-bike">--</div>
+            </button>
+            <button class="mode-tab" data-mode="transit">
+              <i data-lucide="bus"></i>
+              <div style="display:flex; align-items:center; gap:4px;">
+                <span class="mode-name" data-i18n="btn_transit">Transporte</span>
+                <span class="beta-badge" data-i18n="beta_badge" style="font-size:8px; background:var(--heat-warm); color:#fff; padding:2px 4px; border-radius:4px; font-weight:700;">BETA</span>
+              </div>
+              <span class="mode-time" id="tab-time-transit">--</span>
+              <div class="efficiency-badge" id="tab-score-transit">--</div>
+            </button>
+          </div>
+
+          <!-- Drawing Controls (Only visible in Manual mode) -->
+          <div id="manual-drawing-controls" class="card hidden" style="margin-top: 16px; padding: 12px; border: 1px dashed var(--primary); background: rgba(0, 150, 57, 0.02);">
+            <h4 style="margin: 0 0 6px 0; color: var(--primary); display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="edit-3"></i> Trazar Ruta Manualmente
+            </h4>
+            <p class="small-text" style="margin-bottom: 12px;">Haz clic en "Iniciar Trazo" y arrastra o haz clics sobre el mapa para dibujar tu ruta ideal sobre las calles.</p>
+            <span class="small-text" style="font-weight: 600; display: block; margin-bottom: 6px; color:#1f2937;">Medio de Transporte:</span>
+            <select id="select-manual-medium" style="width:100%; padding: 6px 8px; border-radius: 6px; border:1px solid rgba(0, 0, 0, 0.15); background:#ffffff; color:#1f2937; margin-bottom:12px; outline:none; font-family: var(--font-body);">
+              <option value="foot">A pie</option>
+              <option value="bike">Bicicleta</option>
+              <option value="transit">Transporte Público</option>
+            </select>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-start-drawing" class="btn-primary" style="flex: 1; padding: 8px; font-weight:600;">Iniciar Trazo</button>
+              <button id="btn-clear-drawing" class="btn-secondary" style="padding: 8px; font-weight:600;">Limpiar</button>
+            </div>
+            <div id="manual-comfort-rating" class="hidden" style="margin-top: 12px; border-top: 1px solid var(--border-light); padding-top: 12px;">
+              <span class="small-text" style="font-weight: 600; display: block; margin-bottom: 6px; color:#1f2937;">Comparte cómo se siente esta ruta climáticamente:</span>
+              <div id="manual-mode-ratings-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Dynamically populated rows -->
+              </div>
+              <button id="btn-save-manual-route" class="btn-primary" style="width: 100%; padding: 8px; font-weight:600; margin-top: 12px; border-radius: 8px;">Guardar este Trazo</button>
+            </div>
+            
+            <div id="saved-manual-routes" class="hidden" style="margin-top: 16px; border-top: 1px solid var(--border-light); padding-top: 12px;">
+              <span class="small-text" style="font-weight: 600; display: block; margin-bottom: 6px; color:#1f2937;">Trazos Guardados:</span>
+              <div id="saved-manual-routes-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Saved routes will appear here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Transit Sub-Options Selector (Only visible in transit mode) -->
+          <div id="transit-options-container" class="transit-options-selector hidden" style="margin-top: 12px; padding: 12px; background: rgba(0, 0, 0, 0.02); border-radius: 12px; border: 1px solid var(--border-light);">
+            <span class="transit-sub-title" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px;">Alternativas de Línea:</span>
+            <div style="display: flex; gap: 8px;">
+              <select id="transit-select-dropdown" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.15); background: #ffffff; color: var(--text-primary); font-family: var(--font-body); font-weight: 500; outline: none; cursor: pointer;"></select>
+              <button id="btn-add-custom-transit" class="btn-secondary" style="padding: 10px; border-radius: 8px;" title="Añadir línea manualmente">
+                <i data-lucide="plus-circle"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Selected Route Metrics -->
+          <div class="route-summary-card card">
+            <div class="route-basic-info">
+              <div>
+                <h3 id="route-title">Cargando ruta...</h3>
+                <p id="route-distance-duration">Calculando distancia...</p>
+              </div>
+              <div class="overall-rating-score" id="route-overall-score">
+                <span>Eficiencia</span>
+                <strong>92%</strong>
+              </div>
+            </div>
+            
+            <!-- Dynamic warning for Urban Heat Islands on walking/cycling -->
+            <div id="heat-island-warning" class="heat-warning-box hidden">
+              <i data-lucide="thermometer-sun"></i>
+              <div>
+                <h4>¡Alerta de Calor en tu Ruta!</h4>
+                <p>Esta ruta atraviesa zonas de alta temperatura (islas de calor). Hidrátate bien.</p>
+              </div>
+            </div>
+
+            <!-- Detail Metrics Breakdown -->
+            <div class="metrics-grid">
+              <div class="metric-card" id="metric-heat">
+                <i data-lucide="thermometer"></i>
+                <div class="metric-info">
+                  <span class="metric-title">Confort Térmico</span>
+                  <span class="metric-value" id="val-metric-heat">Moderado</span>
+                </div>
+              </div>
+              <div class="metric-card" id="metric-eco">
+                <i data-lucide="leaf"></i>
+                <div class="metric-info">
+                  <span class="metric-title">Eco-Huella</span>
+                  <span class="metric-value" id="val-metric-eco">0g CO₂</span>
+                </div>
+              </div>
+              <div class="metric-card" id="metric-cost">
+                <i data-lucide="wallet"></i>
+                <div class="metric-info">
+                  <span class="metric-title">Costo Estimado</span>
+                  <span class="metric-value" id="val-metric-cost">Gratis</span>
+                </div>
+              </div>
+              <div class="metric-card" id="metric-health">
+                <i data-lucide="activity"></i>
+                <div class="metric-info">
+                  <span class="metric-title">Calorías Quemadas</span>
+                  <span class="metric-value" id="val-metric-health">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section to rate the current mode -->
+          <div class="mode-ratings-card card">
+            <div class="card-header">
+              <h3><i data-lucide="star"></i> Califica los tramos de este viaje</h3>
+            </div>
+            <p class="small-text">Tus calificaciones afectarán las recomendaciones de este y otros viajes.</p>
+            
+            <div class="rating-stars-container" id="mode-ratings-list">
+              <!-- Dynamically populated rows -->
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+    
+    <!-- Toast Message Container -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- PWA Install Banner -->
+    <div id="pwa-install-banner" class="pwa-install-banner hidden">
+      <div class="pwa-content">
+        <i data-lucide="download"></i>
+        <div>
+          <h4>Instalar EcoRoute</h4>
+          <p>Añade la app a tu pantalla de inicio para acceso offline.</p>
+        </div>
+      </div>
+      <div class="pwa-actions">
+        <button id="pwa-btn-install" class="btn-primary">Instalar</button>
+        <button id="pwa-btn-dismiss" class="btn-secondary">Ahora no</button>
+      </div>
+    </div>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  
+  <!-- GeoRaster for Client-Side TIFF Parsing -->
+  <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+  
+  <!-- Modal Ayuda -->
+  <div id="info-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h2 data-i18n="info_title">¿Qué es EcoRoute?</h2>
+      <p data-i18n="info_p1">EcoRoute es un planificador inteligente que busca las rutas más confortables térmicamente para caminar o ir en bicicleta por la ciudad.</p>
+      <p data-i18n="info_p2">También permite a la comunidad mapear 'Refugios Climáticos', lugares donde las personas pueden resguardarse del calor extremo.</p>
+      <div style="background: rgba(16, 185, 129, 0.1); padding: 12px; border-radius: 8px; margin-top: 16px;">
+        <i data-lucide="shield-check" style="color: var(--primary); display: block; margin-bottom: 8px;"></i>
+        <p data-i18n="info_p3" style="font-size: 12px; font-weight: 500; color: var(--text-secondary);">Tus datos son completamente anónimos y se guardan únicamente en tu dispositivo (Local-First) cumpliendo con la RGPD.</p>
+      </div>
+      <button id="btn-close-info" class="btn-primary" style="margin-top: 20px; width: 100%;" data-i18n="btn_close">Cerrar</button>
+    </div>
+  </div>
+
+  <script src="translations.js"></script>
+  <script src="db.js"></script>
+  <!-- Main Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
